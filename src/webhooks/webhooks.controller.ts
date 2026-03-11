@@ -13,7 +13,9 @@ import Stripe from 'stripe';
 
 @Controller('webhooks')
 export class WebhooksController {
-  private readonly logger = new Logger(WebhooksController.name);
+  private readonly logger = new Logger(WebhooksController.name, {
+    timestamp: true,
+  });
 
   constructor(
     private readonly stripe: StripeService,

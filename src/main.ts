@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { Logger } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { config as loadEnv } from 'dotenv';
 
@@ -13,6 +13,14 @@ async function bootstrap() {
   loadEnv({ path: '.env' });
 
   const app = await NestFactory.create(AppModule, { rawBody: true });
+
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+    }),
+  );
+
   await app.listen(process.env.PORT ?? 3000);
 
   const configService = app.get(ConfigService);
