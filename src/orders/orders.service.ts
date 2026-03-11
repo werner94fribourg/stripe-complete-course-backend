@@ -21,7 +21,7 @@ export class OrdersService {
   }
 
   create(orderId: string, userId: string, items: OrderItemDto[]): Order {
-    const total = this.calculateOrderTotal(items);
+    const total = Math.round(this.calculateOrderTotal(items) * 100) / 100;
 
     const order: Order = {
       id: orderId,

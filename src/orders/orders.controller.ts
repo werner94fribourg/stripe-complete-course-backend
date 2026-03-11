@@ -30,4 +30,20 @@ export class OrdersController {
   findAll() {
     return this.ordersService.findAll();
   }
+
+  @Post('checkout-session')
+  async createCheckoutSession(@Body() dto: CreateOrderDto) {
+    const { orderId, userId, items } = dto;
+
+    // Create and store the order with pending: true
+    const order = this.ordersService.create(orderId, userId, items);
+
+    const session = await this.stripeService.getCheckoutSession(
+      orderId,
+      userId,
+      items,
+    );
+
+    return { url: session.url, sessionId: session.id, order };
+  }
 }
