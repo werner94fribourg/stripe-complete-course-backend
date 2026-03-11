@@ -8,7 +8,8 @@ import {
   RawBody,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { StripeService } from 'src/stripe/stripe.service';
+import { StripeService } from '../stripe/stripe.service';
+import { OrdersService } from '../orders/orders.service';
 import Stripe from 'stripe';
 
 @Controller('webhooks')
@@ -20,6 +21,7 @@ export class WebhooksController {
   constructor(
     private readonly stripe: StripeService,
     private readonly configService: ConfigService,
+    private readonly ordersService: OrdersService,
   ) {}
 
   @Post('')
@@ -53,6 +55,8 @@ export class WebhooksController {
       switch (event.type) {
         case 'payment_intent.succeeded':
           return this.handlePaymentSucceeded(event.data.object);
+        case 'payment_intent.payment_failed':
+          return this.handlePaymentFailed(event.data.object);
         default:
           this.logger.log(`Unhandled event type: ${event.type}`);
       }
@@ -68,12 +72,52 @@ export class WebhooksController {
   private handlePaymentSucceeded(paymentIntent: Stripe.PaymentIntent) {
     this.logger.log(`Payment succeeded for PaymentIntent: ${paymentIntent.id}`);
 
+    const orderId = paymentIntent.metadata?.orderId;
+
+    if (orderId) {
+      const order = this.ordersService.markAsCompleted(orderId);
+      this.logger.log(`Order ${orderId} marked as completed (pending: false)`);
+
+      return {
+        received: true,
+        type: 'payment_intent.succeeded',
+        paymentIntentId: paymentIntent.id,
+        amount: paymentIntent.amount,
+        currency: paymentIntent.currency,
+        order,
+      };
+    }
+
     return {
       received: true,
       type: 'payment_intent.succeeded',
       paymentIntentId: paymentIntent.id,
       amount: paymentIntent.amount,
       currency: paymentIntent.currency,
+    };
+  }
+
+  private handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
+    this.logger.log(`Payment failed for PaymentIntent: ${paymentIntent.id}`);
+
+    const orderId = paymentIntent.metadata?.orderId;
+
+    if (orderId) {
+      const order = this.ordersService.markAsFailed(orderId);
+      this.logger.log(`Order ${orderId} marked as failed (isFailed: true)`);
+
+      return {
+        received: true,
+        type: 'payment_intent.payment_failed',
+        paymentIntentId: paymentIntent.id,
+        order,
+      };
+    }
+
+    return {
+      received: true,
+      type: 'payment_intent.payment_failed',
+      paymentIntentId: paymentIntent.id,
     };
   }
 }

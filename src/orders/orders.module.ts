@@ -8,5 +8,6 @@ import { StripeModule } from '../stripe/stripe.module';
   imports: [ProductsModule, StripeModule],
   controllers: [OrdersController],
   providers: [OrdersService],
+  exports: [OrdersService],
 })
 export class OrdersModule {}

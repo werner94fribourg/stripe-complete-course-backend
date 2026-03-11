@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post } from '@nestjs/common';
 import { CreateOrderDto } from './dtos/create-order.dto';
 import { OrdersService } from './orders.service';
 import { StripeService } from '../stripe/stripe.service';
@@ -9,17 +9,25 @@ export class OrdersController {
     private readonly stripeService: StripeService,
     private readonly ordersService: OrdersService,
   ) {}
+
   @Post('payment-intent')
   async createPaymentIntent(@Body() dto: CreateOrderDto) {
     const { orderId, userId, items } = dto;
-    const amount = this.ordersService.calculateOrderTotal(items);
+
+    // Create and store the order with pending: true
+    const order = this.ordersService.create(orderId, userId, items);
 
     const paymentIntent = await this.stripeService.getPaymentIntent(
-      amount,
+      order.total,
       orderId,
       userId,
     );
 
-    return { clientSecret: paymentIntent.client_secret };
+    return { clientSecret: paymentIntent.client_secret, order };
+  }
+
+  @Get()
+  findAll() {
+    return this.ordersService.findAll();
   }
 }

@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
 import { WebhooksController } from './webhooks.controller';
-import { StripeModule } from 'src/stripe/stripe.module';
+import { StripeModule } from '../stripe/stripe.module';
 import { ConfigModule } from '@nestjs/config';
+import { OrdersModule } from '../orders/orders.module';
 
 @Module({
-  imports: [StripeModule, ConfigModule],
+  imports: [StripeModule, ConfigModule, OrdersModule],
   controllers: [WebhooksController],
 })
 export class WebhooksModule {}
