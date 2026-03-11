@@ -2,9 +2,17 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { config as loadEnv } from 'dotenv';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const logger = new Logger('Bootstrap', { timestamp: true });
+
+  // 1. Load .env files FIRST
+  const stage = process.env.STAGE || 'development';
+  loadEnv({ path: `.env.${stage}.local`, override: true });
+  loadEnv({ path: '.env' });
+
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   await app.listen(process.env.PORT ?? 3000);
 
   const configService = app.get(ConfigService);
@@ -12,7 +20,7 @@ async function bootstrap() {
   // Setup TCP RPC microservice separately
   const port = configService.getOrThrow<number>('PORT');
 
-  return { logger: new Logger('Bootstrap', { timestamp: true }), port };
+  return { logger, port };
 }
 bootstrap()
   .then(({ logger, port }) => {
