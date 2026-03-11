@@ -75,6 +75,7 @@ export class WebhooksController {
     const orderId = paymentIntent.metadata?.orderId;
 
     if (orderId) {
+      this.ordersService.setPaymentIntentId(orderId, paymentIntent.id);
       const order = this.ordersService.markAsCompleted(orderId);
       this.logger.log(`Order ${orderId} marked as completed (pending: false)`);
 

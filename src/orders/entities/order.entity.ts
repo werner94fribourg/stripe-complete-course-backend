@@ -8,4 +8,5 @@ export interface Order {
   pending: boolean;
   isFailed: boolean;
   createdAt: Date;
+  paymentIntentId?: string;
 }

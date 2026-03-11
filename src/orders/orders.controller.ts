@@ -1,5 +1,13 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+} from '@nestjs/common';
 import { CreateOrderDto } from './dtos/create-order.dto';
+import { RefundDto } from './dtos/refund.dto';
 import { OrdersService } from './orders.service';
 import { StripeService } from '../stripe/stripe.service';
 
@@ -45,5 +53,34 @@ export class OrdersController {
     );
 
     return { url: session.url, sessionId: session.id, order };
+  }
+
+  @Post(':id/refund')
+  async refundOrder(@Param('id') id: string, @Body() dto: RefundDto) {
+    const order = this.ordersService.findOne(id);
+
+    if (!order.paymentIntentId) {
+      throw new BadRequestException('Cannot refund: no payment associated');
+    }
+
+    if (order.pending) {
+      throw new BadRequestException('Cannot refund: payment still pending');
+    }
+
+    if (order.isFailed) {
+      throw new BadRequestException('Cannot refund: payment failed');
+    }
+
+    const refund = await this.stripeService.createRefund(
+      order.paymentIntentId,
+      dto.amount,
+    );
+
+    return {
+      refundId: refund.id,
+      amount: refund.amount / 100,
+      status: refund.status,
+      orderId: order.id,
+    };
   }
 }

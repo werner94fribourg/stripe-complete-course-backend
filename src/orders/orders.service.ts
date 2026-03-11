@@ -37,7 +37,7 @@ export class OrdersService {
     return order;
   }
 
-  findById(id: string): Order {
+  findOne(id: string): Order {
     const order = this.orders.find((o) => o.id === id);
     if (!order) {
       throw new NotFoundException(`Order with id ${id} not found`);
@@ -45,14 +45,20 @@ export class OrdersService {
     return order;
   }
 
+  setPaymentIntentId(orderId: string, paymentIntentId: string): Order {
+    const order = this.findOne(orderId);
+    order.paymentIntentId = paymentIntentId;
+    return order;
+  }
+
   markAsCompleted(id: string): Order {
-    const order = this.findById(id);
+    const order = this.findOne(id);
     order.pending = false;
     return order;
   }
 
   markAsFailed(id: string): Order {
-    const order = this.findById(id);
+    const order = this.findOne(id);
     order.isFailed = true;
     return order;
   }

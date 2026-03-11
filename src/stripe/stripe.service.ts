@@ -72,4 +72,19 @@ export class StripeService {
         : null,
     };
   }
+
+  async createRefund(
+    paymentIntentId: string,
+    amount?: number,
+  ): Promise<Stripe.Refund> {
+    const refundParams: Stripe.RefundCreateParams = {
+      payment_intent: paymentIntentId,
+    };
+
+    if (amount !== undefined) {
+      refundParams.amount = Math.round(amount * 100);
+    }
+
+    return this.client.refunds.create(refundParams);
+  }
 }
