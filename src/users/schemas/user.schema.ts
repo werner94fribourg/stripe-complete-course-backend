@@ -14,7 +14,7 @@ export class User {
   @Prop({ required: true, select: false })
   password: string;
 
-  @Prop({ default: null })
+  @Prop({ type: String, default: null })
   stripeCustomerId: string | null;
 }
 

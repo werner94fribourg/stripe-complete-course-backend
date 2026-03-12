@@ -20,7 +20,7 @@ export class Product {
   @Prop({ required: true })
   stripePriceId: string;
 
-  @Prop({ default: null })
+  @Prop({ type: String, default: null })
   stripeRecurringPriceId: string | null;
 }
 

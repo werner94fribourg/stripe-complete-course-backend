@@ -37,13 +37,13 @@ export class Order {
   @Prop({ default: false })
   isFailed: boolean;
 
-  @Prop({ default: null })
+  @Prop({ type: String, default: null })
   paymentIntentId: string | null;
 
-  @Prop({ default: null })
+  @Prop({ type: String, default: null })
   checkoutSessionId: string | null;
 
-  @Prop({ default: null })
+  @Prop({ type: String, default: null })
   stripeCustomerId: string | null;
 }
 
