@@ -4,9 +4,6 @@ import { OrderItemDto } from './order-item.dto';
 
 export class CreateOrderDto {
   @IsString()
-  orderId: string;
-
-  @IsString()
   userId: string;
 
   @IsArray()

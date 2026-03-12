@@ -26,7 +26,7 @@ export class WebhooksController {
 
   @Post('')
   @HttpCode(200)
-  handleStripeWebhook(
+  async handleStripeWebhook(
     @Headers('stripe-signature') signature: string,
     @RawBody() payload: Buffer,
   ) {
@@ -38,14 +38,12 @@ export class WebhooksController {
 
     try {
       if (webhookSecret) {
-        // Production mode: verify signature
         event = this.stripe.constructWebhookEvent(
           payload,
           signature,
           webhookSecret,
         );
       } else {
-        // Local testing mode: parse event without signature verification
         this.logger.warn(
           'STRIPE_WEBHOOK_SECRET not set - skipping signature verification (local testing mode)',
         );
@@ -54,9 +52,9 @@ export class WebhooksController {
 
       switch (event.type) {
         case 'payment_intent.succeeded':
-          return this.handlePaymentSucceeded(event.data.object);
+          return await this.handlePaymentSucceeded(event.data.object);
         case 'payment_intent.payment_failed':
-          return this.handlePaymentFailed(event.data.object);
+          return await this.handlePaymentFailed(event.data.object);
         default:
           this.logger.log(`Unhandled event type: ${event.type}`);
       }
@@ -69,14 +67,14 @@ export class WebhooksController {
     }
   }
 
-  private handlePaymentSucceeded(paymentIntent: Stripe.PaymentIntent) {
+  private async handlePaymentSucceeded(paymentIntent: Stripe.PaymentIntent) {
     this.logger.log(`Payment succeeded for PaymentIntent: ${paymentIntent.id}`);
 
     const orderId = paymentIntent.metadata?.orderId;
 
     if (orderId) {
-      this.ordersService.setPaymentIntentId(orderId, paymentIntent.id);
-      const order = this.ordersService.markAsCompleted(orderId);
+      await this.ordersService.setPaymentIntentId(orderId, paymentIntent.id);
+      const order = await this.ordersService.markAsCompleted(orderId);
       this.logger.log(`Order ${orderId} marked as completed (pending: false)`);
 
       return {
@@ -98,13 +96,13 @@ export class WebhooksController {
     };
   }
 
-  private handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
+  private async handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
     this.logger.log(`Payment failed for PaymentIntent: ${paymentIntent.id}`);
 
     const orderId = paymentIntent.metadata?.orderId;
 
     if (orderId) {
-      const order = this.ordersService.markAsFailed(orderId);
+      const order = await this.ordersService.markAsFailed(orderId);
       this.logger.log(`Order ${orderId} marked as failed (isFailed: true)`);
 
       return {
