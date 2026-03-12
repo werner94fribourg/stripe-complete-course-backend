@@ -5,6 +5,8 @@ import {
   Get,
   Param,
   Post,
+  Request,
+  UseGuards,
 } from '@nestjs/common';
 import { CreateOrderDto } from './dtos/create-order.dto';
 import { RefundDto } from './dtos/refund.dto';
@@ -12,6 +14,7 @@ import { OrdersService } from './orders.service';
 import { StripeService } from '../stripe/stripe.service';
 import { UsersService } from '../users/users.service';
 import { ProductsService } from '../products/products.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('orders')
 export class OrdersController {
@@ -68,6 +71,12 @@ export class OrdersController {
   @Get()
   findAll() {
     return this.ordersService.findAll();
+  }
+
+  @Get('user')
+  @UseGuards(JwtAuthGuard)
+  async findByUser(@Request() req: { user: { userId: string } }) {
+    return this.ordersService.findByUserId(req.user.userId);
   }
 
   @Post('checkout-session')

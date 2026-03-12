@@ -192,4 +192,65 @@ export class StripeService {
 
     return this.client.refunds.create(refundParams);
   }
+
+  // === SUBSCRIPTION MANAGEMENT ===
+
+  async createSubscription(
+    customerId: string,
+    priceId: string,
+    metadata?: Record<string, string>,
+    options?: {
+      trialPeriodDays?: number;
+      billingCycleAnchor?: number;
+      cancelAt?: number;
+    },
+  ): Promise<Stripe.Subscription> {
+    const params: Stripe.SubscriptionCreateParams = {
+      customer: customerId,
+      items: [{ price: priceId }],
+      metadata,
+      payment_behavior: 'default_incomplete',
+      payment_settings: {
+        save_default_payment_method: 'on_subscription',
+      },
+      expand: ['latest_invoice.payment_intent'],
+    };
+
+    if (options?.trialPeriodDays) {
+      params.trial_period_days = options.trialPeriodDays;
+    }
+
+    if (options?.billingCycleAnchor) {
+      params.billing_cycle_anchor = options.billingCycleAnchor;
+    }
+
+    if (options?.cancelAt) {
+      params.cancel_at = options.cancelAt;
+    }
+
+    return this.client.subscriptions.create(params);
+  }
+
+  async getSubscription(subscriptionId: string): Promise<Stripe.Subscription> {
+    return this.client.subscriptions.retrieve(subscriptionId);
+  }
+
+  async updateSubscription(
+    subscriptionId: string,
+    params: Stripe.SubscriptionUpdateParams,
+  ): Promise<Stripe.Subscription> {
+    return this.client.subscriptions.update(subscriptionId, params);
+  }
+
+  async cancelSubscription(
+    subscriptionId: string,
+    immediately: boolean = false,
+  ): Promise<Stripe.Subscription> {
+    if (immediately) {
+      return this.client.subscriptions.cancel(subscriptionId);
+    }
+    return this.client.subscriptions.update(subscriptionId, {
+      cancel_at_period_end: true,
+    });
+  }
 }

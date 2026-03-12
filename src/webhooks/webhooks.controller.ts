@@ -10,7 +10,22 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { StripeService } from '../stripe/stripe.service';
 import { OrdersService } from '../orders/orders.service';
+import { SubscriptionService } from '../subscription/subscription.service';
 import Stripe from 'stripe';
+
+// Type helpers for Stripe objects (to work around @types/stripe conflicts)
+interface StripeInvoice {
+  id: string;
+  subscription?: string | { id: string };
+}
+
+interface StripeSubscription {
+  id: string;
+  status: string;
+  current_period_start: number;
+  current_period_end: number;
+  cancellation_details?: { reason?: string };
+}
 
 @Controller('webhooks')
 export class WebhooksController {
@@ -22,6 +37,7 @@ export class WebhooksController {
     private readonly stripe: StripeService,
     private readonly configService: ConfigService,
     private readonly ordersService: OrdersService,
+    private readonly subscriptionService: SubscriptionService,
   ) {}
 
   @Post('')
@@ -55,6 +71,22 @@ export class WebhooksController {
           return await this.handlePaymentSucceeded(event.data.object);
         case 'payment_intent.payment_failed':
           return await this.handlePaymentFailed(event.data.object);
+        case 'invoice.payment_succeeded':
+          return await this.handleInvoicePaymentSucceeded(
+            event.data.object as unknown as StripeInvoice,
+          );
+        case 'invoice.payment_failed':
+          return await this.handleInvoicePaymentFailed(
+            event.data.object as unknown as StripeInvoice,
+          );
+        case 'customer.subscription.updated':
+          return await this.handleSubscriptionUpdated(
+            event.data.object as unknown as StripeSubscription,
+          );
+        case 'customer.subscription.deleted':
+          return await this.handleSubscriptionDeleted(
+            event.data.object as unknown as StripeSubscription,
+          );
         default:
           this.logger.log(`Unhandled event type: ${event.type}`);
       }
@@ -117,6 +149,121 @@ export class WebhooksController {
       received: true,
       type: 'payment_intent.payment_failed',
       paymentIntentId: paymentIntent.id,
+    };
+  }
+
+  private async handleInvoicePaymentSucceeded(invoice: StripeInvoice) {
+    this.logger.log(`Invoice payment succeeded: ${invoice.id}`);
+
+    // Only process subscription invoices
+    if (invoice.subscription) {
+      const subscriptionId =
+        typeof invoice.subscription === 'string'
+          ? invoice.subscription
+          : invoice.subscription.id;
+
+      try {
+        await this.subscriptionService.markAsPaid(subscriptionId);
+        this.logger.log(`Subscription ${subscriptionId} marked as paid`);
+
+        return {
+          received: true,
+          type: 'invoice.payment_succeeded',
+          invoiceId: invoice.id,
+          subscriptionId,
+        };
+      } catch {
+        this.logger.warn(
+          `Subscription ${subscriptionId} not found in database`,
+        );
+      }
+    }
+
+    return {
+      received: true,
+      type: 'invoice.payment_succeeded',
+      invoiceId: invoice.id,
+    };
+  }
+
+  private async handleInvoicePaymentFailed(invoice: StripeInvoice) {
+    this.logger.log(`Invoice payment failed: ${invoice.id}`);
+
+    if (invoice.subscription) {
+      const subscriptionId =
+        typeof invoice.subscription === 'string'
+          ? invoice.subscription
+          : invoice.subscription.id;
+
+      try {
+        await this.subscriptionService.updateStatus(subscriptionId, 'past_due');
+        this.logger.log(`Subscription ${subscriptionId} marked as past_due`);
+      } catch {
+        this.logger.warn(
+          `Subscription ${subscriptionId} not found in database`,
+        );
+      }
+    }
+
+    return {
+      received: true,
+      type: 'invoice.payment_failed',
+      invoiceId: invoice.id,
+    };
+  }
+
+  private async handleSubscriptionUpdated(subscription: StripeSubscription) {
+    this.logger.log(
+      `Subscription updated: ${subscription.id}, status: ${subscription.status}`,
+    );
+
+    try {
+      // Update status in database
+      await this.subscriptionService.updateStatus(
+        subscription.id,
+        subscription.status,
+      );
+
+      // Update billing period
+      await this.subscriptionService.updatePeriod(
+        subscription.id,
+        new Date(subscription.current_period_start * 1000),
+        new Date(subscription.current_period_end * 1000),
+      );
+
+      this.logger.log(`Subscription ${subscription.id} updated in database`);
+    } catch {
+      this.logger.warn(`Subscription ${subscription.id} not found in database`);
+    }
+
+    return {
+      received: true,
+      type: 'customer.subscription.updated',
+      subscriptionId: subscription.id,
+      status: subscription.status,
+    };
+  }
+
+  private async handleSubscriptionDeleted(subscription: StripeSubscription) {
+    this.logger.log(`Subscription deleted/cancelled: ${subscription.id}`);
+
+    try {
+      const cancellationReason =
+        subscription.cancellation_details?.reason || undefined;
+      await this.subscriptionService.markAsCancelled(
+        subscription.id,
+        cancellationReason,
+      );
+
+      this.logger.log(`Subscription ${subscription.id} marked as cancelled`);
+    } catch {
+      this.logger.warn(`Subscription ${subscription.id} not found in database`);
+    }
+
+    return {
+      received: true,
+      type: 'customer.subscription.deleted',
+      subscriptionId: subscription.id,
     };
   }
 }
