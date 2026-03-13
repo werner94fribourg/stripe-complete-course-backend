@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -7,21 +8,64 @@ import {
   Param,
   Post,
   Put,
+  Request,
+  UseGuards,
 } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { StripeService } from '../stripe/stripe.service';
+import { UsersService } from '../users/users.service';
 import { CreateProductDto } from './dtos/create-product.dto';
 import { UpdateProductDto } from './dtos/update-product.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 
 @Controller('products')
 export class ProductsController {
   constructor(
     private readonly productsService: ProductsService,
     private readonly stripeService: StripeService,
+    private readonly usersService: UsersService,
   ) {}
 
   @Post()
-  async create(@Body() createProductDto: CreateProductDto) {
+  @UseGuards(OptionalJwtAuthGuard)
+  async create(
+    @Body() createProductDto: CreateProductDto,
+    @Request() req: { user?: { userId: string } },
+  ) {
+    let ownerId: string | undefined;
+
+    if (createProductDto.isOwner) {
+      if (!req.user) {
+        throw new BadRequestException(
+          'You must be logged in to create a product as owner',
+        );
+      }
+
+      const user = await this.usersService.findById(req.user.userId);
+      if (!user) {
+        throw new BadRequestException('User not found');
+      }
+
+      if (!user.stripeConnectAccountId) {
+        throw new BadRequestException(
+          'You must complete seller onboarding before creating a product as owner. Please visit /seller/onboarding to set up your seller account.',
+        );
+      }
+
+      const isReady = await this.stripeService.isConnectAccountReady(
+        user.stripeConnectAccountId,
+      );
+
+      if (!isReady) {
+        throw new BadRequestException(
+          'Your seller account is not fully set up. Please complete onboarding at /seller/onboarding.',
+        );
+      }
+
+      ownerId = req.user.userId;
+    }
+
     const stripeProduct = await this.stripeService.createProduct(
       createProductDto.name,
       createProductDto.description,
@@ -43,7 +87,14 @@ export class ProductsController {
       stripeProduct.id,
       stripePrice.id,
       stripeRecurringPrice.id,
+      ownerId,
     );
+  }
+
+  @Get('my-products')
+  @UseGuards(JwtAuthGuard)
+  async getMyProducts(@Request() req: { user: { userId: string } }) {
+    return this.productsService.findByOwnerId(req.user.userId);
   }
 
   @Get()

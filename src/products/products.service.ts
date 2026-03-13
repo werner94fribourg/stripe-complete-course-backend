@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { CreateProductDto } from './dtos/create-product.dto';
 import { UpdateProductDto } from './dtos/update-product.dto';
 import { Product, ProductDocument } from './schemas/product.schema';
@@ -16,12 +16,16 @@ export class ProductsService {
     stripeProductId: string,
     stripePriceId: string,
     stripeRecurringPriceId?: string,
+    ownerId?: string,
   ): Promise<ProductDocument> {
     const product = new this.productModel({
-      ...createProductDto,
+      name: createProductDto.name,
+      description: createProductDto.description,
+      price: createProductDto.price,
       stripeProductId,
       stripePriceId,
       stripeRecurringPriceId: stripeRecurringPriceId || null,
+      ownerId: ownerId ? new Types.ObjectId(ownerId) : null,
     });
     return product.save();
   }
@@ -85,5 +89,20 @@ export class ProductsService {
     if (!result) {
       throw new NotFoundException(`Product with id ${id} not found`);
     }
+  }
+
+  async findByOwnerId(ownerId: string): Promise<ProductDocument[]> {
+    return this.productModel
+      .find({ ownerId: new Types.ObjectId(ownerId) })
+      .exec();
+  }
+
+  async setOwner(id: string, ownerId: string): Promise<ProductDocument> {
+    const product = await this.productModel.findById(id);
+    if (!product) {
+      throw new NotFoundException(`Product with id ${id} not found`);
+    }
+    product.ownerId = new Types.ObjectId(ownerId);
+    return product.save();
   }
 }

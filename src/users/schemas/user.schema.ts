@@ -16,6 +16,12 @@ export class User {
 
   @Prop({ type: String, default: null })
   stripeCustomerId: string | null;
+
+  @Prop({ type: Boolean, default: false })
+  isSeller: boolean;
+
+  @Prop({ type: String, default: null })
+  stripeConnectAccountId: string | null;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

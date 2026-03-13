@@ -11,6 +11,9 @@ import { ConfigService } from '@nestjs/config';
 import { StripeService } from '../stripe/stripe.service';
 import { OrdersService } from '../orders/orders.service';
 import { SubscriptionService } from '../subscription/subscription.service';
+import { SellerEarningsService } from '../seller-earnings/seller-earnings.service';
+import { PayoutsService } from '../payouts/payouts.service';
+import { UsersService } from '../users/users.service';
 import Stripe from 'stripe';
 
 // Type helpers for Stripe objects (to work around @types/stripe conflicts)
@@ -32,13 +35,20 @@ export class WebhooksController {
   private readonly logger = new Logger(WebhooksController.name, {
     timestamp: true,
   });
+  private readonly platformFeePercent: number;
 
   constructor(
     private readonly stripe: StripeService,
     private readonly configService: ConfigService,
     private readonly ordersService: OrdersService,
     private readonly subscriptionService: SubscriptionService,
-  ) {}
+    private readonly sellerEarningsService: SellerEarningsService,
+    private readonly payoutsService: PayoutsService,
+    private readonly usersService: UsersService,
+  ) {
+    this.platformFeePercent =
+      this.configService.get<number>('PLATFORM_FEE_PERCENTAGE') || 10;
+  }
 
   @Post('')
   @HttpCode(200)
@@ -87,8 +97,24 @@ export class WebhooksController {
           return await this.handleSubscriptionDeleted(
             event.data.object as unknown as StripeSubscription,
           );
-        default:
-          this.logger.log(`Unhandled event type: ${event.type}`);
+        case 'account.updated':
+          return await this.handleAccountUpdated(
+            event.data.object as Stripe.Account,
+          );
+        case 'transfer.created':
+          return await this.handleTransferCreated(
+            event.data.object as Stripe.Transfer,
+          );
+        default: {
+          // Handle additional events that may not be in TypeScript definitions
+          const eventType = event.type as string;
+          if (eventType === 'transfer.failed') {
+            return await this.handleTransferFailed(
+              event.data.object as Stripe.Transfer,
+            );
+          }
+          this.logger.log(`Unhandled event type: ${eventType}`);
+        }
       }
 
       return { received: true };
@@ -103,11 +129,35 @@ export class WebhooksController {
     this.logger.log(`Payment succeeded for PaymentIntent: ${paymentIntent.id}`);
 
     const orderId = paymentIntent.metadata?.orderId;
+    const sellerId = paymentIntent.metadata?.sellerId;
+    const productId = paymentIntent.metadata?.productId;
 
     if (orderId) {
       await this.ordersService.setPaymentIntentId(orderId, paymentIntent.id);
       const order = await this.ordersService.markAsCompleted(orderId);
       this.logger.log(`Order ${orderId} marked as completed (pending: false)`);
+
+      if (sellerId && productId) {
+        const grossAmount = paymentIntent.amount;
+        const platformFee = Math.round(
+          (grossAmount * this.platformFeePercent) / 100,
+        );
+        const netAmount = grossAmount - platformFee;
+
+        await this.sellerEarningsService.createEarning({
+          sellerId,
+          orderId,
+          productId,
+          grossAmount,
+          platformFee,
+          netAmount,
+          paymentIntentId: paymentIntent.id,
+        });
+
+        this.logger.log(
+          `Seller earnings created: seller=${sellerId}, gross=${grossAmount}, net=${netAmount}`,
+        );
+      }
 
       return {
         received: true,
@@ -264,6 +314,67 @@ export class WebhooksController {
       received: true,
       type: 'customer.subscription.deleted',
       subscriptionId: subscription.id,
+    };
+  }
+
+  private async handleAccountUpdated(account: Stripe.Account) {
+    this.logger.log(
+      `Connect account updated: ${account.id}, charges_enabled: ${account.charges_enabled}, payouts_enabled: ${account.payouts_enabled}`,
+    );
+
+    const userId = account.metadata?.userId;
+
+    if (userId) {
+      try {
+        if (account.charges_enabled && account.payouts_enabled) {
+          await this.usersService.markAsSeller(userId);
+          this.logger.log(`User ${userId} marked as fully onboarded seller`);
+        }
+      } catch {
+        this.logger.warn(`User ${userId} not found in database`);
+      }
+    }
+
+    return {
+      received: true,
+      type: 'account.updated',
+      accountId: account.id,
+      chargesEnabled: account.charges_enabled,
+      payoutsEnabled: account.payouts_enabled,
+    };
+  }
+
+  private async handleTransferCreated(transfer: Stripe.Transfer) {
+    this.logger.log(`Transfer created: ${transfer.id}`);
+
+    try {
+      await this.payoutsService.markAsCompleted(transfer.id);
+      this.logger.log(`Payout for transfer ${transfer.id} marked as completed`);
+    } catch {
+      this.logger.warn(`Payout for transfer ${transfer.id} not found`);
+    }
+
+    return {
+      received: true,
+      type: 'transfer.created',
+      transferId: transfer.id,
+    };
+  }
+
+  private async handleTransferFailed(transfer: Stripe.Transfer) {
+    this.logger.log(`Transfer failed: ${transfer.id}`);
+
+    try {
+      await this.payoutsService.markAsFailed(transfer.id);
+      this.logger.log(`Payout for transfer ${transfer.id} marked as failed`);
+    } catch {
+      this.logger.warn(`Payout for transfer ${transfer.id} not found`);
+    }
+
+    return {
+      received: true,
+      type: 'transfer.failed',
+      transferId: transfer.id,
     };
   }
 }

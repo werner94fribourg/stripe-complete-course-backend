@@ -8,6 +8,7 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { CreateOrderDto } from './dtos/create-order.dto';
 import { RefundDto } from './dtos/refund.dto';
 import { OrdersService } from './orders.service';
@@ -18,12 +19,18 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('orders')
 export class OrdersController {
+  private readonly platformFeePercent: number;
+
   constructor(
     private readonly stripeService: StripeService,
     private readonly ordersService: OrdersService,
     private readonly usersService: UsersService,
     private readonly productsService: ProductsService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    this.platformFeePercent =
+      this.configService.get<number>('PLATFORM_FEE_PERCENTAGE') || 10;
+  }
 
   private async ensureStripeCustomer(userId: string): Promise<string> {
     const user = await this.usersService.findById(userId);
@@ -57,6 +64,64 @@ export class OrdersController {
       items,
       stripeCustomerId,
     );
+
+    const sellerProducts: Array<{
+      productId: string;
+      sellerId: string;
+      connectedAccountId: string;
+      amount: number;
+    }> = [];
+
+    for (const item of items) {
+      const product = await this.productsService.findOne(item.productId);
+      if (product.ownerId) {
+        const seller = await this.usersService.findById(
+          product.ownerId.toString(),
+        );
+        if (seller?.stripeConnectAccountId) {
+          const isReady = await this.stripeService.isConnectAccountReady(
+            seller.stripeConnectAccountId,
+          );
+          if (isReady) {
+            sellerProducts.push({
+              productId: item.productId,
+              sellerId: product.ownerId.toString(),
+              connectedAccountId: seller.stripeConnectAccountId,
+              amount: product.price * item.quantity,
+            });
+          }
+        }
+      }
+    }
+
+    if (sellerProducts.length === 1) {
+      const sellerProduct = sellerProducts[0];
+      const platformFee = Math.round(
+        (order.total * this.platformFeePercent) / 100,
+      );
+
+      const paymentIntent =
+        await this.stripeService.getPaymentIntentWithConnect(
+          order.total,
+          order._id.toString(),
+          userId,
+          sellerProduct.connectedAccountId,
+          platformFee,
+          stripeCustomerId,
+          {
+            sellerId: sellerProduct.sellerId,
+            productId: sellerProduct.productId,
+          },
+        );
+
+      return { clientSecret: paymentIntent.client_secret, order };
+    }
+
+    if (sellerProducts.length > 1) {
+      throw new BadRequestException(
+        'Orders with products from multiple sellers are not supported yet. Please create separate orders for each seller.',
+      );
+    }
 
     const paymentIntent = await this.stripeService.getPaymentIntent(
       order.total,

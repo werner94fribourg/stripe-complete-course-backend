@@ -99,4 +99,38 @@ export class UsersService {
     }
     return null;
   }
+
+  async setStripeConnectAccountId(
+    userId: string,
+    accountId: string,
+  ): Promise<UserDocument> {
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new NotFoundException(`User with id ${userId} not found`);
+    }
+    user.stripeConnectAccountId = accountId;
+    return user.save();
+  }
+
+  async markAsSeller(userId: string): Promise<UserDocument> {
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new NotFoundException(`User with id ${userId} not found`);
+    }
+    user.isSeller = true;
+    return user.save();
+  }
+
+  async findSellers(): Promise<UserDocument[]> {
+    return this.userModel.find({ isSeller: true }).exec();
+  }
+
+  async findSellersWithConnectAccounts(): Promise<UserDocument[]> {
+    return this.userModel
+      .find({
+        isSeller: true,
+        stripeConnectAccountId: { $ne: null },
+      })
+      .exec();
+  }
 }

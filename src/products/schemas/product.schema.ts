@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument } from 'mongoose';
+import { HydratedDocument, Schema as MongooseSchema, Types } from 'mongoose';
 
 export type ProductDocument = HydratedDocument<Product>;
 
@@ -22,6 +22,9 @@ export class Product {
 
   @Prop({ type: String, default: null })
   stripeRecurringPriceId: string | null;
+
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', default: null })
+  ownerId: Types.ObjectId | null;
 }
 
 export const ProductSchema = SchemaFactory.createForClass(Product);

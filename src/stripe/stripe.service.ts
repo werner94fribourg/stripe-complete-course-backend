@@ -253,4 +253,99 @@ export class StripeService {
       cancel_at_period_end: true,
     });
   }
+
+  // === STRIPE CONNECT (Express Accounts) ===
+
+  async createConnectAccount(
+    email: string,
+    metadata?: Record<string, string>,
+  ): Promise<Stripe.Account> {
+    return this.client.accounts.create({
+      type: 'express',
+      email,
+      metadata,
+      capabilities: {
+        card_payments: { requested: true },
+        transfers: { requested: true },
+      },
+    });
+  }
+
+  async createAccountLink(
+    accountId: string,
+    refreshUrl: string,
+    returnUrl: string,
+  ): Promise<Stripe.AccountLink> {
+    return this.client.accountLinks.create({
+      account: accountId,
+      refresh_url: refreshUrl,
+      return_url: returnUrl,
+      type: 'account_onboarding',
+    });
+  }
+
+  async getConnectAccount(accountId: string): Promise<Stripe.Account> {
+    return this.client.accounts.retrieve(accountId);
+  }
+
+  async isConnectAccountReady(accountId: string): Promise<boolean> {
+    const account = await this.getConnectAccount(accountId);
+    return account.charges_enabled && account.payouts_enabled;
+  }
+
+  // === PAYMENT INTENT WITH CONNECT ===
+
+  async getPaymentIntentWithConnect(
+    amount: number,
+    orderId: string,
+    userId: string,
+    connectedAccountId: string,
+    applicationFeeAmount: number,
+    customerId?: string,
+    sellerInfo?: { sellerId: string; productId: string },
+  ) {
+    const params: Stripe.PaymentIntentCreateParams = {
+      amount: Math.round(amount),
+      currency: 'usd',
+      automatic_payment_methods: { enabled: true },
+      application_fee_amount: Math.round(applicationFeeAmount),
+      transfer_data: {
+        destination: connectedAccountId,
+      },
+      metadata: {
+        orderId,
+        userId,
+        ...(sellerInfo && {
+          sellerId: sellerInfo.sellerId,
+          productId: sellerInfo.productId,
+        }),
+      },
+    };
+
+    if (customerId) {
+      params.customer = customerId;
+    }
+
+    const paymentIntent = await this.client.paymentIntents.create(params);
+
+    return {
+      ...paymentIntent,
+      amount: Math.round(paymentIntent.amount) / 100,
+    };
+  }
+
+  // === TRANSFERS ===
+
+  async createTransfer(
+    amount: number,
+    destinationAccountId: string,
+    metadata?: Record<string, string>,
+  ): Promise<Stripe.Transfer> {
+    return this.client.transfers.create({
+      amount: Math.round(amount),
+      currency: 'usd',
+      destination: destinationAccountId,
+      metadata,
+    });
+  }
 }
