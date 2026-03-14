@@ -27,6 +27,12 @@ export class SubscriptionService {
     private readonly stripeService: StripeService,
   ) {}
 
+  async findByIdempotencyKey(
+    idempotencyKey: string,
+  ): Promise<SubscriptionDocument | null> {
+    return this.subscriptionModel.findOne({ idempotencyKey }).exec();
+  }
+
   async createSubscription(
     userId: string,
     dto: CreateSubscriptionDto,
@@ -34,6 +40,18 @@ export class SubscriptionService {
     subscription: SubscriptionDocument;
     clientSecret: string | null;
   }> {
+    // Check for existing subscription with this idempotency key
+    if (dto.idempotencyKey) {
+      const existingSubscription = await this.findByIdempotencyKey(
+        dto.idempotencyKey,
+      );
+      if (existingSubscription) {
+        // Return existing subscription - extract client secret if available
+        // Note: client secret may no longer be valid, but returning existing sub prevents duplicates
+        return { subscription: existingSubscription, clientSecret: null };
+      }
+    }
+
     // 1. Retrieve and validate product exists
     await this.productsService.findOne(dto.productId);
 
@@ -75,6 +93,7 @@ export class SubscriptionService {
           billingCycleAnchor,
           cancelAt,
         },
+        dto.idempotencyKey,
       );
 
     // 6. Extract client secret for payment
@@ -117,6 +136,7 @@ export class SubscriptionService {
         : null,
       paid: false,
       status: stripeSub.status,
+      idempotencyKey: dto.idempotencyKey || null,
     });
 
     const savedSubscription = await subscription.save();

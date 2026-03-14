@@ -120,6 +120,7 @@ export class StripeService {
     orderId: string,
     userId: string,
     customerId?: string,
+    idempotencyKey?: string,
   ) {
     const params: Stripe.PaymentIntentCreateParams = {
       amount: Math.round(amount),
@@ -135,7 +136,15 @@ export class StripeService {
       params.customer = customerId;
     }
 
-    const paymentIntent = await this.client.paymentIntents.create(params);
+    const options: Stripe.RequestOptions = {};
+    if (idempotencyKey) {
+      options.idempotencyKey = idempotencyKey;
+    }
+
+    const paymentIntent = await this.client.paymentIntents.create(
+      params,
+      options,
+    );
 
     return {
       ...paymentIntent,
@@ -219,6 +228,7 @@ export class StripeService {
       billingCycleAnchor?: number;
       cancelAt?: number;
     },
+    idempotencyKey?: string,
   ): Promise<Stripe.Subscription> {
     const params: Stripe.SubscriptionCreateParams = {
       customer: customerId,
@@ -243,7 +253,12 @@ export class StripeService {
       params.cancel_at = options.cancelAt;
     }
 
-    return this.client.subscriptions.create(params);
+    const requestOptions: Stripe.RequestOptions = {};
+    if (idempotencyKey) {
+      requestOptions.idempotencyKey = idempotencyKey;
+    }
+
+    return this.client.subscriptions.create(params, requestOptions);
   }
 
   async getSubscription(subscriptionId: string): Promise<Stripe.Subscription> {
@@ -318,6 +333,7 @@ export class StripeService {
     applicationFeeAmount: number,
     customerId?: string,
     sellerInfo?: { sellerId: string; productId: string },
+    idempotencyKey?: string,
   ) {
     const params: Stripe.PaymentIntentCreateParams = {
       amount: Math.round(amount),
@@ -341,7 +357,15 @@ export class StripeService {
       params.customer = customerId;
     }
 
-    const paymentIntent = await this.client.paymentIntents.create(params);
+    const options: Stripe.RequestOptions = {};
+    if (idempotencyKey) {
+      options.idempotencyKey = idempotencyKey;
+    }
+
+    const paymentIntent = await this.client.paymentIntents.create(
+      params,
+      options,
+    );
 
     return {
       ...paymentIntent,
@@ -417,6 +441,7 @@ export class StripeService {
     userId: string,
     customerId: string,
     paymentMethodId: string,
+    idempotencyKey?: string,
   ) {
     const params: Stripe.PaymentIntentCreateParams = {
       amount: Math.round(amount),
@@ -429,7 +454,15 @@ export class StripeService {
       return_url: `${this.configService.get<string>('FRONTEND_URL')}/checkout/success`,
     };
 
-    const paymentIntent = await this.client.paymentIntents.create(params);
+    const options: Stripe.RequestOptions = {};
+    if (idempotencyKey) {
+      options.idempotencyKey = idempotencyKey;
+    }
+
+    const paymentIntent = await this.client.paymentIntents.create(
+      params,
+      options,
+    );
 
     return {
       ...paymentIntent,
@@ -446,6 +479,7 @@ export class StripeService {
     connectedAccountId: string,
     applicationFeeAmount: number,
     sellerInfo?: { sellerId: string; productId: string },
+    idempotencyKey?: string,
   ) {
     const params: Stripe.PaymentIntentCreateParams = {
       amount: Math.round(amount),
@@ -467,7 +501,15 @@ export class StripeService {
       return_url: `${this.configService.get<string>('FRONTEND_URL')}/checkout/success`,
     };
 
-    const paymentIntent = await this.client.paymentIntents.create(params);
+    const options: Stripe.RequestOptions = {};
+    if (idempotencyKey) {
+      options.idempotencyKey = idempotencyKey;
+    }
+
+    const paymentIntent = await this.client.paymentIntents.create(
+      params,
+      options,
+    );
 
     return {
       ...paymentIntent,

@@ -26,4 +26,8 @@ export class CreateSubscriptionDto {
   @Min(1)
   @Max(730)
   trialPeriodDays?: number;
+
+  @IsOptional()
+  @IsString()
+  idempotencyKey?: string;
 }

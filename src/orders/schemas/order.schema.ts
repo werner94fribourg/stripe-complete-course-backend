@@ -45,9 +45,14 @@ export class Order {
 
   @Prop({ type: String, default: null })
   stripeCustomerId: string | null;
+
+  @Prop({ type: String, default: null })
+  idempotencyKey: string | null;
 }
 
 export const OrderSchema = SchemaFactory.createForClass(Order);
+
+OrderSchema.index({ idempotencyKey: 1 }, { unique: true, sparse: true });
 
 OrderSchema.set('toJSON', {
   virtuals: true,

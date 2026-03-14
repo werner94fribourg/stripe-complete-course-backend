@@ -23,11 +23,26 @@ export class OrdersService {
     return total;
   }
 
+  async findByIdempotencyKey(
+    idempotencyKey: string,
+  ): Promise<OrderDocument | null> {
+    return this.orderModel.findOne({ idempotencyKey }).exec();
+  }
+
   async create(
     userId: string,
     items: OrderItemDto[],
     stripeCustomerId?: string,
+    idempotencyKey?: string,
   ): Promise<OrderDocument> {
+    // Check for existing order with this idempotency key
+    if (idempotencyKey) {
+      const existingOrder = await this.findByIdempotencyKey(idempotencyKey);
+      if (existingOrder) {
+        return existingOrder;
+      }
+    }
+
     const orderItems: OrderItem[] = [];
     let total = 0;
 
@@ -51,6 +66,7 @@ export class OrdersService {
       pending: true,
       isFailed: false,
       stripeCustomerId: stripeCustomerId || null,
+      idempotencyKey: idempotencyKey || null,
     });
 
     return order.save();

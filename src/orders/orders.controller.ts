@@ -55,7 +55,7 @@ export class OrdersController {
 
   @Post('payment-intent')
   async createPaymentIntent(@Body() dto: CreateOrderDto) {
-    const { userId, items, paymentMethodId } = dto;
+    const { userId, items, paymentMethodId, idempotencyKey } = dto;
 
     const stripeCustomerId = await this.ensureStripeCustomer(userId);
 
@@ -63,6 +63,7 @@ export class OrdersController {
       userId,
       items,
       stripeCustomerId,
+      idempotencyKey,
     );
 
     const sellerProducts: Array<{
@@ -124,6 +125,7 @@ export class OrdersController {
               sellerId: sellerProduct.sellerId,
               productId: sellerProduct.productId,
             },
+            idempotencyKey,
           );
 
         return {
@@ -151,6 +153,7 @@ export class OrdersController {
           userId,
           stripeCustomerId,
           paymentMethodId,
+          idempotencyKey,
         );
 
       return {
@@ -184,6 +187,7 @@ export class OrdersController {
             sellerId: sellerProduct.sellerId,
             productId: sellerProduct.productId,
           },
+          idempotencyKey,
         );
 
       return { clientSecret: paymentIntent.client_secret, order };
@@ -200,6 +204,7 @@ export class OrdersController {
       order._id.toString(),
       userId,
       stripeCustomerId,
+      idempotencyKey,
     );
 
     return { clientSecret: paymentIntent.client_secret, order };

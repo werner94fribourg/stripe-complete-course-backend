@@ -59,9 +59,14 @@ export class Subscription {
 
   @Prop({ type: Date, default: null })
   cancelledAt: Date | null;
+
+  @Prop({ type: String, default: null })
+  idempotencyKey: string | null;
 }
 
 export const SubscriptionSchema = SchemaFactory.createForClass(Subscription);
+
+SubscriptionSchema.index({ idempotencyKey: 1 }, { unique: true, sparse: true });
 
 SubscriptionSchema.set('toJSON', {
   virtuals: true,
