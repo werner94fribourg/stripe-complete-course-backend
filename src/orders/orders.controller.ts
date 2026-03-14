@@ -55,7 +55,7 @@ export class OrdersController {
 
   @Post('payment-intent')
   async createPaymentIntent(@Body() dto: CreateOrderDto) {
-    const { userId, items } = dto;
+    const { userId, items, paymentMethodId } = dto;
 
     const stripeCustomerId = await this.ensureStripeCustomer(userId);
 
@@ -94,6 +94,78 @@ export class OrdersController {
       }
     }
 
+    // Handle saved payment method flow
+    if (paymentMethodId) {
+      // Validate that the payment method belongs to this user
+      const paymentMethod =
+        await this.stripeService.getPaymentMethod(paymentMethodId);
+      if (paymentMethod.customer !== stripeCustomerId) {
+        throw new BadRequestException(
+          'Payment method does not belong to this user',
+        );
+      }
+
+      if (sellerProducts.length === 1) {
+        const sellerProduct = sellerProducts[0];
+        const platformFee = Math.round(
+          (order.total * this.platformFeePercent) / 100,
+        );
+
+        const paymentIntent =
+          await this.stripeService.getPaymentIntentWithConnectAndSavedMethod(
+            order.total,
+            order._id.toString(),
+            userId,
+            stripeCustomerId,
+            paymentMethodId,
+            sellerProduct.connectedAccountId,
+            platformFee,
+            {
+              sellerId: sellerProduct.sellerId,
+              productId: sellerProduct.productId,
+            },
+          );
+
+        return {
+          paymentIntentId: paymentIntent.id,
+          status: paymentIntent.status,
+          requiresAction: paymentIntent.status === 'requires_action',
+          clientSecret:
+            paymentIntent.status === 'requires_action'
+              ? paymentIntent.client_secret
+              : null,
+          order,
+        };
+      }
+
+      if (sellerProducts.length > 1) {
+        throw new BadRequestException(
+          'Orders with products from multiple sellers are not supported yet. Please create separate orders for each seller.',
+        );
+      }
+
+      const paymentIntent =
+        await this.stripeService.getPaymentIntentWithSavedMethod(
+          order.total,
+          order._id.toString(),
+          userId,
+          stripeCustomerId,
+          paymentMethodId,
+        );
+
+      return {
+        paymentIntentId: paymentIntent.id,
+        status: paymentIntent.status,
+        requiresAction: paymentIntent.status === 'requires_action',
+        clientSecret:
+          paymentIntent.status === 'requires_action'
+            ? paymentIntent.client_secret
+            : null,
+        order,
+      };
+    }
+
+    // Original flow: return clientSecret for new payment method
     if (sellerProducts.length === 1) {
       const sellerProduct = sellerProducts[0];
       const platformFee = Math.round(
@@ -146,7 +218,7 @@ export class OrdersController {
 
   @Post('checkout-session')
   async createCheckoutSession(@Body() dto: CreateOrderDto) {
-    const { userId, items } = dto;
+    const { userId, items, paymentMethodId } = dto;
 
     const stripeCustomerId = await this.ensureStripeCustomer(userId);
 
@@ -166,11 +238,16 @@ export class OrdersController {
       }),
     );
 
+    // If paymentMethodId is provided or user has a customer ID,
+    // enable saved payment methods display in checkout
     const session = await this.stripeService.getCheckoutSession(
       order._id.toString(),
       userId,
       lineItems,
       stripeCustomerId,
+      {
+        showSavedPaymentMethods: !!paymentMethodId || !!stripeCustomerId,
+      },
     );
 
     await this.ordersService.setCheckoutSessionId(

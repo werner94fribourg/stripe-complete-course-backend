@@ -150,6 +150,9 @@ export class StripeService {
     userId: string,
     lineItems: Array<{ priceId: string; quantity: number }>,
     customerId?: string,
+    options?: {
+      showSavedPaymentMethods?: boolean;
+    },
   ) {
     const params: Stripe.Checkout.SessionCreateParams = {
       mode: 'payment',
@@ -164,6 +167,18 @@ export class StripeService {
 
     if (customerId) {
       params.customer = customerId;
+
+      // Enable saved payment methods display in hosted checkout
+      if (options?.showSavedPaymentMethods) {
+        params.payment_method_options = {
+          card: {
+            setup_future_usage: 'on_session',
+          },
+        };
+        params.saved_payment_method_options = {
+          payment_method_save: 'enabled',
+        };
+      }
     }
 
     const session = await this.client.checkout.sessions.create(params);
@@ -347,5 +362,116 @@ export class StripeService {
       destination: destinationAccountId,
       metadata,
     });
+  }
+
+  // === SETUP INTENT (for saving payment methods) ===
+
+  async createSetupIntent(customerId: string): Promise<Stripe.SetupIntent> {
+    return this.client.setupIntents.create({
+      customer: customerId,
+      automatic_payment_methods: { enabled: true },
+    });
+  }
+
+  async getSetupIntent(setupIntentId: string): Promise<Stripe.SetupIntent> {
+    return this.client.setupIntents.retrieve(setupIntentId);
+  }
+
+  // === PAYMENT METHODS ===
+
+  async listPaymentMethods(
+    customerId: string,
+  ): Promise<Stripe.PaymentMethod[]> {
+    const result = await this.client.paymentMethods.list({
+      customer: customerId,
+    });
+    return result.data;
+  }
+
+  async getPaymentMethod(
+    paymentMethodId: string,
+  ): Promise<Stripe.PaymentMethod> {
+    return this.client.paymentMethods.retrieve(paymentMethodId);
+  }
+
+  async detachPaymentMethod(
+    paymentMethodId: string,
+  ): Promise<Stripe.PaymentMethod> {
+    return this.client.paymentMethods.detach(paymentMethodId);
+  }
+
+  async setDefaultPaymentMethod(
+    customerId: string,
+    paymentMethodId: string,
+  ): Promise<Stripe.Customer> {
+    return this.client.customers.update(customerId, {
+      invoice_settings: { default_payment_method: paymentMethodId },
+    });
+  }
+
+  // === PAYMENT INTENT WITH SAVED METHOD ===
+
+  async getPaymentIntentWithSavedMethod(
+    amount: number,
+    orderId: string,
+    userId: string,
+    customerId: string,
+    paymentMethodId: string,
+  ) {
+    const params: Stripe.PaymentIntentCreateParams = {
+      amount: Math.round(amount),
+      currency: 'usd',
+      customer: customerId,
+      payment_method: paymentMethodId,
+      metadata: { orderId, userId },
+      off_session: false,
+      confirm: true,
+      return_url: `${this.configService.get<string>('FRONTEND_URL')}/checkout/success`,
+    };
+
+    const paymentIntent = await this.client.paymentIntents.create(params);
+
+    return {
+      ...paymentIntent,
+      amount: Math.round(paymentIntent.amount) / 100,
+    };
+  }
+
+  async getPaymentIntentWithConnectAndSavedMethod(
+    amount: number,
+    orderId: string,
+    userId: string,
+    customerId: string,
+    paymentMethodId: string,
+    connectedAccountId: string,
+    applicationFeeAmount: number,
+    sellerInfo?: { sellerId: string; productId: string },
+  ) {
+    const params: Stripe.PaymentIntentCreateParams = {
+      amount: Math.round(amount),
+      currency: 'usd',
+      customer: customerId,
+      payment_method: paymentMethodId,
+      application_fee_amount: Math.round(applicationFeeAmount),
+      transfer_data: { destination: connectedAccountId },
+      metadata: {
+        orderId,
+        userId,
+        ...(sellerInfo && {
+          sellerId: sellerInfo.sellerId,
+          productId: sellerInfo.productId,
+        }),
+      },
+      off_session: false,
+      confirm: true,
+      return_url: `${this.configService.get<string>('FRONTEND_URL')}/checkout/success`,
+    };
+
+    const paymentIntent = await this.client.paymentIntents.create(params);
+
+    return {
+      ...paymentIntent,
+      amount: Math.round(paymentIntent.amount) / 100,
+    };
   }
 }

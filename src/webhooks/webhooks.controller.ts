@@ -101,6 +101,10 @@ export class WebhooksController {
           return await this.handleAccountUpdated(
             event.data.object as Stripe.Account,
           );
+        case 'setup_intent.succeeded':
+          return this.handleSetupIntentSucceeded(
+            event.data.object as Stripe.SetupIntent,
+          );
         case 'transfer.created':
           return await this.handleTransferCreated(
             event.data.object as Stripe.Transfer,
@@ -341,6 +345,18 @@ export class WebhooksController {
       accountId: account.id,
       chargesEnabled: account.charges_enabled,
       payoutsEnabled: account.payouts_enabled,
+    };
+  }
+
+  private handleSetupIntentSucceeded(setupIntent: Stripe.SetupIntent) {
+    this.logger.log(
+      `Setup intent succeeded: ${setupIntent.id}, payment_method: ${setupIntent.payment_method}`,
+    );
+
+    return {
+      received: true,
+      type: 'setup_intent.succeeded',
+      setupIntentId: setupIntent.id,
     };
   }
 

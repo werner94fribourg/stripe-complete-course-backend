@@ -15,6 +15,7 @@ import { PlansModule } from './plans/plans.module';
 import { ConnectModule } from './connect/connect.module';
 import { SellerEarningsModule } from './seller-earnings/seller-earnings.module';
 import { PayoutsModule } from './payouts/payouts.module';
+import { PaymentMethodsModule } from './payment-methods/payment-methods.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { PayoutsModule } from './payouts/payouts.module';
     ConnectModule,
     SellerEarningsModule,
     PayoutsModule,
+    PaymentMethodsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
